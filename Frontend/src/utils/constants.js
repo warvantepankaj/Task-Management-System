@@ -41,6 +41,18 @@ export const USER_SORT_OPTIONS = [
   { value: 'role', label: 'Role' },
 ];
 
+export const KANBAN_COLUMN_ORDER = [
+  TASK_STATUS.PENDING,
+  TASK_STATUS.IN_PROGRESS,
+  TASK_STATUS.COMPLETED,
+];
+
+export const KANBAN_COLUMN_LABEL = {
+  [TASK_STATUS.PENDING]: 'To Do',
+  [TASK_STATUS.IN_PROGRESS]: 'In Progress',
+  [TASK_STATUS.COMPLETED]: 'Done',
+};
+
 export const TASK_STATUS_COLORS = {
   [TASK_STATUS.PENDING]: {
     bg: 'bg-amber-50',
