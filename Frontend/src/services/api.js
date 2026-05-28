@@ -24,7 +24,7 @@ const clearSessionAndRedirect = (reason) => {
   }
 };
 
-const performRefresh = async () => {
+export const performRefresh = async () => {
   const refresh_token = localStorage.getItem(STORAGE_KEYS.REFRESH);
   if (!refresh_token) throw new Error('no_refresh_token');
 

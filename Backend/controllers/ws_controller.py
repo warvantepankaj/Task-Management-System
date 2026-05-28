@@ -6,12 +6,12 @@ ConnectionManager, and dispatches inbound drag events to it. Closes with custom
 code 4401 on auth failure so the client knows to refresh + reconnect.
 """
 import logging
-import os
 from typing import Optional
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from jose import jwt, JWTError
 
+from core.config import JWT_SECRET
 from core.ws_manager import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -25,13 +25,12 @@ WS_UNAUTHORIZED_CLOSE_CODE = 4401
 def _decode_token(token: str) -> Optional[dict]:
     if not token:
         return None
-    # TODO(merge): tighten when refresh-token lands on main
-    secret = os.getenv("JWT_SECRET", "TOP_SECRET")
     try:
-        payload = jwt.decode(token, secret, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
     except JWTError:
         return None
-    # TODO(merge): tighten when refresh-token lands on main (require token_type == "access")
+    if payload.get("token_type") != "access":
+        return None
     user_id = payload.get("user_id")
     role = payload.get("role")
     if not user_id or not role:

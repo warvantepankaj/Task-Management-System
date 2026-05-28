@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { performRefresh } from '../services/api';
+import { STORAGE_KEYS } from '../utils/constants';
 
 /**
  * Maintains a WebSocket connection to /ws/tasks and dispatches incoming
@@ -27,7 +29,7 @@ const useTaskSocket = (callbacks = {}) => {
   callbacksRef.current = callbacks;
 
   const computeWsUrl = useCallback(() => {
-    const token = localStorage.getItem('token') || '';
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS) || '';
     // Default to ws://localhost:8000 since the FastAPI dev server runs there.
     // For prod, VITE_WS_URL can override.
     const explicit = import.meta.env?.VITE_WS_URL;
@@ -122,12 +124,20 @@ const useTaskSocket = (callbacks = {}) => {
       wsRef.current = null;
       if (stoppedRef.current) return;
       if (event.code === 4401) {
-        // Token invalid/expired. A refresh-token implementation can call
-        // /auth/refresh here once it lands. For now: just reconnect with
-        // whatever token is in storage (the axios interceptor will already
-        // have evicted the user on 401 if needed).
-        // eslint-disable-next-line no-console
-        console.warn('useTaskSocket: closed 4401 — token rejected, reconnecting');
+        // Token rejected — refresh the access token, then reconnect with the new one.
+        // If refresh fails, the axios interceptor will have already evicted the user.
+        performRefresh()
+          .then(() => {
+            if (stoppedRef.current) return;
+            reconnectAttemptsRef.current = 0;
+            connect();
+          })
+          .catch((err) => {
+            // eslint-disable-next-line no-console
+            console.warn('useTaskSocket: refresh after 4401 failed', err);
+            scheduleReconnect(connect);
+          });
+        return;
       }
       scheduleReconnect(connect);
     };
