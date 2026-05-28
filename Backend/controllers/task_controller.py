@@ -13,7 +13,7 @@ router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 
 @router.post("/create_task")
-def create_task(
+async def create_task(
     task: TaskCreate,
     conn=Depends(get_db),
     admin: dict = Depends(admin_required),
@@ -24,7 +24,7 @@ def create_task(
             detail="assigned_to is required for admin",
         )
 
-    return TaskService.create_task(conn, task, admin_id=admin["id"])
+    return await TaskService.create_task(conn, task, admin_id=admin["id"])
 
 
 @router.get("/admin", summary="Admin - get all tasks (legacy unpaginated)")
@@ -44,23 +44,23 @@ def get_my_tasks(
 
 
 @router.put("/{task_id}/admin", summary="Admin updates task")
-def update_task_admin(
+async def update_task_admin(
     task_id: int,
     payload: TaskUpdateAdmin,
     admin: dict = Depends(admin_required),
     conn=Depends(get_db),
 ):
-    return TaskService.admin_update_task(conn, task_id, admin["id"], payload)
+    return await TaskService.admin_update_task(conn, task_id, admin["id"], payload)
 
 
 @router.patch("/{task_id}/status", summary="User updates task status")
-def update_task_status(
+async def update_task_status(
     task_id: int,
     payload: TaskStatusUpdate,
     user: dict = Depends(user_required),
     conn=Depends(get_db),
 ):
-    return TaskService.user_update_task_status(
+    return await TaskService.user_update_task_status(
         conn, task_id, user["id"], payload.status
     )
 
@@ -82,7 +82,6 @@ def get_tasks_filtered(
     conn=Depends(get_db),
 ):
     is_admin = current_user["role"] == "admin"
-    # The user_id we pass to the service forces scoping for non-admins.
     user_id = None if is_admin else current_user["id"]
 
     return TaskService.get_tasks_paginated_filtered(
@@ -102,10 +101,10 @@ def get_tasks_filtered(
 
 
 @router.delete("/{task_id}/delete", summary="Admin deletes a task")
-def delete_task(
+async def delete_task(
     task_id: int,
     admin: dict = Depends(admin_required),
     conn=Depends(get_db),
 ):
-    TaskService.delete_task(conn, task_id)
+    await TaskService.delete_task(conn, task_id, actor_id=admin["id"])
     return {"message": "Task deleted successfully"}

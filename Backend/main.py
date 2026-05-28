@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from controllers.user_controller import user_router
 from controllers.task_controller import router as task_router
 from controllers.auth_controller import auth_router
+from controllers.ws_controller import ws_router
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -19,6 +20,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(task_router)
 app.include_router(user_router)
+app.include_router(ws_router)
 
 if __name__ == "__main__":
     uvicorn.run("main:app")

@@ -1,18 +1,51 @@
 import datetime
 from psycopg2.extensions import connection
-from fastapi import HTTPException,status
+from fastapi import HTTPException, status
 from dao.task_dao import TaskDAO
 from constants.task_constants import VALID_STATUSES
 from schemas.task import TaskCreate, TaskUpdateAdmin, TaskStatusUpdate
+from core.ws_manager import ws_manager
+
+
+def _serialize_task(task) -> dict | None:
+    """Coerce a DAO row into a JSON-friendly dict for WS broadcasts.
+
+    DAO methods return either a dict (RealDictCursor / get_task_by_id) or a raw
+    psycopg2 tuple. We normalize both so callers don't have to care.
+    """
+    if task is None:
+        return None
+    if isinstance(task, dict):
+        out = dict(task)
+    else:
+        try:
+            out = {
+                "id": task[0],
+                "title": task[1],
+                "description": task[2],
+                "status": task[3],
+                "due_date": task[4],
+                "assigned_to": task[5],
+                "assigned_by": task[6],
+                "created_at": task[7] if len(task) > 7 else None,
+            }
+        except Exception:
+            return None
+    for key in ("due_date", "created_at"):
+        val = out.get(key)
+        if isinstance(val, (datetime.date, datetime.datetime)):
+            out[key] = val.isoformat()
+    return out
+
 
 class TaskService:
 
     @staticmethod
-    def create_task(conn, task: TaskCreate, admin_id: int):
+    async def create_task(conn, task: TaskCreate, admin_id: int):
         task_data = (
             task.title,
             task.description,
-            task.status.value,  # convert enum to string
+            task.status.value,
             task.due_date,
             task.assigned_to,
             admin_id
@@ -25,11 +58,12 @@ class TaskService:
         except Exception as e:
             conn.rollback()
             raise HTTPException(status_code=500, detail=f"Failed to create task: {str(e)}")
-        
+
+        await ws_manager.broadcast_task_event(
+            "task.created", _serialize_task(created_task) or {}, actor_id=admin_id
+        )
         return created_task
 
-    
-    
     @staticmethod
     def get_all_tasks_admin(conn):
         return TaskDAO.get_all_tasks_admin(conn)
@@ -37,9 +71,9 @@ class TaskService:
     @staticmethod
     def get_tasks_for_user(conn, user_id: int):
         return TaskDAO.get_tasks_for_user(conn, user_id)
-    
+
     @staticmethod
-    def admin_update_task(conn, task_id: int, admin_id: int, payload):
+    async def admin_update_task(conn, task_id: int, admin_id: int, payload):
         updates = payload.dict(exclude_unset=True)
 
         if not updates:
@@ -56,11 +90,16 @@ class TaskService:
             )
 
         conn.commit()
+
+        serialized = _serialize_task(task)
+        if serialized:
+            await ws_manager.broadcast_task_event(
+                "task.updated", serialized, actor_id=admin_id
+            )
         return task
 
-
     @staticmethod
-    def user_update_task_status(conn, task_id: int, user_id: int, status: str):
+    async def user_update_task_status(conn, task_id: int, user_id: int, status: str):
 
         updated_task = TaskDAO.update_task_status(conn, task_id, user_id, status)
 
@@ -70,8 +109,12 @@ class TaskService:
                 detail="Task not found or not assigned to user"
             )
 
+        full = TaskDAO.get_task_by_id(conn, task_id)
+        serialized = _serialize_task(full) or {"id": task_id, "assigned_to": user_id, "status": status}
+        await ws_manager.broadcast_task_event(
+            "task.status_changed", serialized, actor_id=user_id
+        )
         return updated_task
-
 
     @staticmethod
     def get_tasks_paginated_filtered(
@@ -89,8 +132,7 @@ class TaskService:
         sort_by: str = "created_at",
         sort_order: str = "desc",
     ):
-        """
-        Build a PaginatedResponse-shaped dict.
+        """Build a PaginatedResponse-shaped dict.
 
         Non-admin callers are pinned to their own `user_id`; any `assigned_to`
         they pass on the query string is dropped — defense in depth on top of
@@ -99,12 +141,11 @@ class TaskService:
         if page < 1 or size < 1:
             raise ValueError("page and size must be >= 1")
 
-        # For non-admins, force scoping to their own tasks.
         if not is_admin:
-            assigned_to = None  # ignored anyway, but make the intent obvious
+            assigned_to = None
             scoped_user_id = user_id
         else:
-            scoped_user_id = None  # admins can filter by `assigned_to` or none
+            scoped_user_id = None
 
         offset = (page - 1) * size
 
@@ -130,8 +171,16 @@ class TaskService:
             "total_pages": int(total_pages),
             "data": tasks,
         }
-    
+
     @staticmethod
-    def delete_task(conn, task_id: int):
+    async def delete_task(conn, task_id: int, actor_id: int | None = None):
+        existing = TaskDAO.get_task_by_id(conn, task_id)
         TaskDAO.delete_task(conn, task_id)
         conn.commit()
+
+        payload = {"id": task_id}
+        if existing and existing.get("assigned_to") is not None:
+            payload["assigned_to"] = existing["assigned_to"]
+        await ws_manager.broadcast_task_event(
+            "task.deleted", payload, actor_id=actor_id if actor_id is not None else 0
+        )
