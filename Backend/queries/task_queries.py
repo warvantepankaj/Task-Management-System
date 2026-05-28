@@ -79,3 +79,21 @@ DELETE FROM tasks
 WHERE id = %s
 RETURNING id;
 """
+
+# Parameterised base templates for the filtered/sorted/paginated list endpoint.
+# {where_clause} is built from a whitelist of conditions, each backed by %s
+# placeholders. {order_clause} is filled from a whitelist (never user input).
+GET_TASKS_FILTERED_BASE = """
+    SELECT id, title, description, status, due_date,
+           assigned_to, assigned_by, created_at
+    FROM tasks
+    {where_clause}
+    ORDER BY {order_clause}
+    LIMIT %s OFFSET %s
+"""
+
+COUNT_TASKS_FILTERED_BASE = """
+    SELECT COUNT(*) AS total
+    FROM tasks
+    {where_clause}
+"""

@@ -2,11 +2,11 @@ import { motion } from 'framer-motion';
 import TaskCard from './TaskCard';
 import { Inbox } from 'lucide-react';
 
-const TaskList = ({ tasks, onEdit, onDelete, onStatusChange, isAdmin, loading }) => {
+const TaskList = ({ tasks, onEdit, onDelete, onStatusChange, isAdmin, loading, skeletonCount = 6 }) => {
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {[1, 2, 3].map((i) => (
+        {Array.from({ length: skeletonCount }).map((_, i) => (
           <div key={i} className="animate-pulse">
             <div className="bg-gray-200 rounded-xl h-64"></div>
           </div>

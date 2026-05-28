@@ -34,3 +34,20 @@ SELECT_ALL_USERS_PAGINATED_QUERY = """
 """
 
 COUNT_USERS_QUERY = "SELECT COUNT(*) AS total FROM users"
+
+# Parameterised base templates for the filtered/sorted/paginated list endpoint.
+# {where_clause} is built from a whitelist of conditions, each backed by %s.
+# {order_clause} is filled from a whitelist (never user input).
+GET_USERS_FILTERED_BASE = """
+    SELECT id, username, email, role, is_active, created_at
+    FROM users
+    {where_clause}
+    ORDER BY {order_clause}
+    LIMIT %s OFFSET %s
+"""
+
+COUNT_USERS_FILTERED_BASE = """
+    SELECT COUNT(*) AS total
+    FROM users
+    {where_clause}
+"""

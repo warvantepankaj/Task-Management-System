@@ -1,4 +1,7 @@
+from typing import Literal, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+
 from services.user_service import UserService
 from database.session import get_db
 from utils.security import hash_password, get_current_user
@@ -76,23 +79,32 @@ def new_user(
         raise HTTPException(status_code=500, detail=f"Error creating user: {str(e)}")
 
 
-@user_router.get("/paginated", summary="Fetch users with pagination")
+@user_router.get("/paginated", summary="Fetch users with pagination + filters + sorting")
 def fetch_all_users_paginated(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(10, ge=1, le=100, description="Number of users per page"),
+    role: Optional[Literal["admin", "user"]] = Query(None),
+    is_active: Optional[bool] = Query(None),
+    search: Optional[str] = Query(None, description="ILIKE match on username or email."),
+    sort_by: Literal["created_at", "username", "email", "role"] = Query("created_at"),
+    sort_order: Literal["asc", "desc"] = Query("desc"),
     db=Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
     try:
-        users, total = UserService.fetch_all_users_paginated(db, page, page_size)
-        return {
-            "page": page,
-            "page_size": page_size,
-            "total": total,
-            "pages": (total + page_size - 1) // page_size,
-            "users": users
-        }
+        return UserService.fetch_all_users_paginated(
+            db,
+            page,
+            page_size,
+            role=role,
+            is_active=is_active,
+            search=search,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching users: {str(e)}")

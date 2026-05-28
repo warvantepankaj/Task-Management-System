@@ -1,8 +1,29 @@
+from datetime import date, datetime, time, timezone
 from typing import Optional
-from queries.task_queries import  CREATE_TASK_QUERY,GET_ALL_TASKS_ADMIN_QUERY, GET_TASKS_BASE, GET_TASKS_FOR_USER_QUERY, UPDATE_TASK_QUERY, UPDATE_TASK_STATUS_QUERY, GET_TASKS_PAGINATED, COUNT_TASKS, DELETE_TASK_QUERY
+
 from psycopg2.extensions import connection, cursor
 from psycopg2.extras import RealDictCursor
 from fastapi import HTTPException, status
+
+from queries.task_queries import (
+    CREATE_TASK_QUERY,
+    GET_ALL_TASKS_ADMIN_QUERY,
+    GET_TASKS_BASE,
+    GET_TASKS_FOR_USER_QUERY,
+    UPDATE_TASK_QUERY,
+    UPDATE_TASK_STATUS_QUERY,
+    GET_TASKS_PAGINATED,
+    COUNT_TASKS,
+    DELETE_TASK_QUERY,
+    GET_TASKS_FILTERED_BASE,
+    COUNT_TASKS_FILTERED_BASE,
+)
+
+# Defense-in-depth: even though the Pydantic Literal on the controller side
+# already rejects unknown sort_by values, the DAO refuses to interpolate any
+# column name that isn't on this list.
+ALLOWED_TASK_SORT = {"created_at", "due_date", "title", "status"}
+ALLOWED_SORT_ORDER = {"asc", "desc"}
 
 class TaskDAO:
 
@@ -71,42 +92,79 @@ class TaskDAO:
             return cur.fetchone()
         
     @staticmethod
-    def get_tasks_paginated_filtered(conn, limit: int, offset: int, status: str | None = None):
-        params = []
-        where_clause = ""
+    def get_tasks_paginated_filtered(
+        conn,
+        limit: int,
+        offset: int,
+        *,
+        user_id: int | None = None,
+        status: str | None = None,
+        assigned_to: int | None = None,
+        due_date_from: date | None = None,
+        due_date_to: date | None = None,
+        search: str | None = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+    ):
+        """
+        Build the WHERE clause incrementally with parameter binding (%s) so
+        nothing from the request ever lands directly in the SQL string. The
+        sort column / direction are mapped through whitelists.
+        """
+        if sort_by not in ALLOWED_TASK_SORT:
+            raise HTTPException(status_code=400, detail="invalid_sort_by")
+        if sort_order not in ALLOWED_SORT_ORDER:
+            raise HTTPException(status_code=400, detail="invalid_sort_order")
 
-        # Add status filter if provided
+        conditions: list[str] = []
+        params: list = []
+
+        if user_id is not None:
+            conditions.append("assigned_to = %s")
+            params.append(user_id)
+        elif assigned_to is not None:
+            # Admin-only filter; service forces user_id for non-admins so this
+            # branch is unreachable for them.
+            conditions.append("assigned_to = %s")
+            params.append(assigned_to)
+
         if status:
-            where_clause = " WHERE status = %s"
+            conditions.append("status = %s")
             params.append(status)
 
-        # Data query
-        data_query = f"""
-            SELECT *
-            FROM tasks
-            {where_clause}
-            ORDER BY created_at DESC
-            LIMIT %s OFFSET %s
-        """
+        if due_date_from is not None:
+            conditions.append("due_date >= %s")
+            params.append(due_date_from)
 
-        # Count query
-        count_query = f"""
-            SELECT COUNT(*) AS total
-            FROM tasks
-            {where_clause}
-        """
+        if due_date_to is not None:
+            # Inclusive of the entire end day. due_date is a DATE column, so
+            # using "<=" on the date is already inclusive of the whole day.
+            conditions.append("due_date <= %s")
+            params.append(due_date_to)
+
+        if search:
+            conditions.append("(title ILIKE %s OR description ILIKE %s)")
+            pattern = f"%{search}%"
+            params.append(pattern)
+            params.append(pattern)
+
+        where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        order_clause = f"{sort_by} {sort_order.upper()}"
+
+        data_query = GET_TASKS_FILTERED_BASE.format(
+            where_clause=where_clause, order_clause=order_clause
+        )
+        count_query = COUNT_TASKS_FILTERED_BASE.format(where_clause=where_clause)
 
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Fetch paginated tasks
             cur.execute(data_query, params + [limit, offset])
             tasks = cur.fetchall()
 
-            # Fetch total count
             cur.execute(count_query, params)
             row = cur.fetchone()
             total = int(row["total"]) if row else 0
 
-        return tasks,total
+        return tasks, total
     
     @staticmethod
     def delete_task(conn, task_id: int):

@@ -74,9 +74,37 @@ class TaskService:
 
 
     @staticmethod
-    def get_tasks_paginated_filtered(conn, page: int, size: int, status: str | None):
+    def get_tasks_paginated_filtered(
+        conn,
+        *,
+        page: int,
+        size: int,
+        is_admin: bool,
+        user_id: int | None,
+        status: str | None = None,
+        assigned_to: int | None = None,
+        due_date_from=None,
+        due_date_to=None,
+        search: str | None = None,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+    ):
+        """
+        Build a PaginatedResponse-shaped dict.
+
+        Non-admin callers are pinned to their own `user_id`; any `assigned_to`
+        they pass on the query string is dropped — defense in depth on top of
+        the controller forcing the same.
+        """
         if page < 1 or size < 1:
             raise ValueError("page and size must be >= 1")
+
+        # For non-admins, force scoping to their own tasks.
+        if not is_admin:
+            assigned_to = None  # ignored anyway, but make the intent obvious
+            scoped_user_id = user_id
+        else:
+            scoped_user_id = None  # admins can filter by `assigned_to` or none
 
         offset = (page - 1) * size
 
@@ -84,15 +112,23 @@ class TaskService:
             conn=conn,
             limit=size,
             offset=offset,
-            status=status
+            user_id=scoped_user_id,
+            status=status,
+            assigned_to=assigned_to,
+            due_date_from=due_date_from,
+            due_date_to=due_date_to,
+            search=search,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
 
+        total_pages = (total + size - 1) // size if size else 0
         return {
             "page": page,
-            "size": size,
-            "total":int (total),
-            "pages": ((int(total)) + size - 1) // size,
-            "data": tasks
+            "page_size": size,
+            "total": int(total),
+            "total_pages": int(total_pages),
+            "data": tasks,
         }
     
     @staticmethod
