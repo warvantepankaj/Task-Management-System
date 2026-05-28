@@ -17,7 +17,29 @@ export const ROUTES = {
   TASKS: '/tasks',
 };
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+// localStorage keys — never reference these strings directly elsewhere.
+export const STORAGE_KEYS = {
+  ACCESS: 'access_token',
+  REFRESH: 'refresh_token',
+  USER: 'user',
+};
+
+// Whitelisted sort options surfaced to the UI. Mirror the backend Literal.
+export const TASK_SORT_OPTIONS = [
+  { value: 'created_at', label: 'Created Date' },
+  { value: 'due_date', label: 'Due Date' },
+  { value: 'title', label: 'Title' },
+  { value: 'status', label: 'Status' },
+];
+
+export const USER_SORT_OPTIONS = [
+  { value: 'created_at', label: 'Created Date' },
+  { value: 'username', label: 'Username' },
+  { value: 'email', label: 'Email' },
+  { value: 'role', label: 'Role' },
+];
 
 export const TASK_STATUS_COLORS = {
   [TASK_STATUS.PENDING]: {

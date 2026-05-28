@@ -85,3 +85,24 @@ CREATE TABLE IF NOT EXISTS task_comments (
 -- Indexes for fast comment lookup
 CREATE INDEX IF NOT EXISTS idx_comments_task_id ON task_comments(task_id);
 CREATE INDEX IF NOT EXISTS idx_comments_user_id ON task_comments(user_id);
+
+
+
+-- ---------- REFRESH TOKENS TABLE ----------
+-- Stores SHA-256 hashes of opaque refresh tokens. The raw token is never persisted.
+-- Rotation: every successful /auth/refresh revokes the presented row and inserts a new one.
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    user_agent TEXT,
+    ip INET,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- Partial index makes "find a user's active refresh tokens" cheap.
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_active
+  ON refresh_tokens (user_id, expires_at)
+  WHERE revoked_at IS NULL;

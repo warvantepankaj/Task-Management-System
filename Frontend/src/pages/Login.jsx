@@ -29,9 +29,9 @@ const Login = () => {
         password: formData.password,
       });
 
-      const { access_token, user } = res.data;
+      const { access_token, refresh_token, user } = res.data;
 
-      login(user, access_token);
+      login(user, access_token, refresh_token);
 
 
       toast.success('Login successful!');
@@ -85,6 +85,15 @@ const Login = () => {
               }
               required
             />
+
+            <div className="flex justify-end -mt-2">
+              <Link
+                to="/forgot-password"
+                className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+              >
+                Forgot password?
+              </Link>
+            </div>
 
             <Button
               type="submit"

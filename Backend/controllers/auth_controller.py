@@ -1,58 +1,63 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+
 from database.session import get_db
-from services.auth_service import register_user, login_user
-from services.user_service import UserService
-from fastapi import Request
-from schemas.auth import RegisterRequest, LoginRequest, UserLogin
-from utils.security import verify_password
-from core.jwt import create_access_token
+from schemas.auth import (
+    RegisterRequest,
+    UserLogin,
+    RefreshRequest,
+    LogoutRequest,
+    LoginResponse,
+    TokenPair,
+)
+from services import auth_service
 
 auth_router = APIRouter()
 
-# Routes
+
+def _client_meta(request: Request) -> tuple[str | None, str | None]:
+    """Pull user-agent and originating IP from the request for audit metadata."""
+    ua = request.headers.get("user-agent")
+    ip = request.client.host if request.client else None
+    return ua, ip
+
+
 @auth_router.post("/register")
 def register(data: RegisterRequest, db=Depends(get_db)):
-    user, error = register_user(db, data.username, data.email, data.password, data.role)
+    user, error = auth_service.register_user(
+        db, data.username, data.email, data.password, data.role
+    )
     if error:
         raise HTTPException(status_code=400, detail=error)
     return {
-        "message": "Login successful",
+        "message": "Registered successfully",
         "user": {
             "id": user["id"],
             "username": user["username"],
             "email": user["email"],
-            "role": user["role"],   # <-- critical
-            "is_active": user["is_active"]
-        }
-    }
-
-@auth_router.post("/login", summary="User/Admin login")
-def login_user(data: UserLogin, db=Depends(get_db)):
-    user = UserService().get_user_by_email_endpoint(db, data.email)
-
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    if not verify_password(data.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    token_payload = {
-        "user_id": user["id"],
-        "role": user["role"]
-    }
-
-    access_token = create_access_token(token_payload)
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
             "role": user["role"],
-            "username":user["username"]
-        }
+            "is_active": user["is_active"],
+        },
     }
 
 
+@auth_router.post("/login", summary="User/Admin login", response_model=LoginResponse)
+def login(data: UserLogin, request: Request, db=Depends(get_db)):
+    ua, ip = _client_meta(request)
+    return auth_service.login_user(db, data.email, data.password, user_agent=ua, ip=ip)
+
+
+@auth_router.post("/auth/refresh", summary="Rotate refresh + access token", response_model=LoginResponse)
+def refresh(data: RefreshRequest, request: Request, db=Depends(get_db)):
+    ua, ip = _client_meta(request)
+    return auth_service.refresh_tokens(db, data.refresh_token, user_agent=ua, ip=ip)
+
+
+@auth_router.post(
+    "/auth/logout",
+    summary="Revoke a refresh token",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def logout(data: LogoutRequest, db=Depends(get_db)):
+    # Idempotent: unknown / already-revoked tokens still return 204.
+    auth_service.logout(db, data.refresh_token)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

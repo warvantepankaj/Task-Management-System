@@ -1,5 +1,6 @@
 import { createContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import { authAPI } from '../services/api';
+import { STORAGE_KEYS } from '../utils/constants';
 
 export const AuthContext = createContext();
 
@@ -8,28 +9,42 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is logged in
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
-    
+    // Restore session from localStorage. The axios interceptor in services/api.js
+    // reads the access token directly each request — no need to set defaults here.
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS);
+    const userData = localStorage.getItem(STORAGE_KEYS.USER);
+
     if (token && userData) {
-      setUser(JSON.parse(userData));
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      try {
+        setUser(JSON.parse(userData));
+      } catch {
+        // Corrupted JSON — clear and stay logged out.
+        localStorage.removeItem(STORAGE_KEYS.USER);
+      }
     }
     setLoading(false);
   }, []);
 
-  const login = (userData, token) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
-    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  const login = (userData, accessToken, refreshToken) => {
+    localStorage.setItem(STORAGE_KEYS.ACCESS, accessToken);
+    if (refreshToken) localStorage.setItem(STORAGE_KEYS.REFRESH, refreshToken);
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
     setUser(userData);
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    delete axios.defaults.headers.common['Authorization'];
+  const logout = async () => {
+    const refresh = localStorage.getItem(STORAGE_KEYS.REFRESH);
+    // Best-effort server-side revocation. We don't block the UI on it.
+    if (refresh) {
+      try {
+        await authAPI.logout(refresh);
+      } catch {
+        /* ignore */
+      }
+    }
+    localStorage.removeItem(STORAGE_KEYS.ACCESS);
+    localStorage.removeItem(STORAGE_KEYS.REFRESH);
+    localStorage.removeItem(STORAGE_KEYS.USER);
     setUser(null);
   };
 
