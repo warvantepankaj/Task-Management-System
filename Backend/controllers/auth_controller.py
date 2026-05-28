@@ -8,6 +8,8 @@ from schemas.auth import (
     LogoutRequest,
     LoginResponse,
     TokenPair,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
 )
 from services import auth_service
 
@@ -61,3 +63,25 @@ def logout(data: LogoutRequest, db=Depends(get_db)):
     # Idempotent: unknown / already-revoked tokens still return 204.
     auth_service.logout(db, data.refresh_token)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@auth_router.post(
+    "/auth/forgot-password",
+    summary="Request a password reset email",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def forgot_password(data: ForgotPasswordRequest, db=Depends(get_db)):
+    # Always 202 — never reveal whether the email is on file.
+    await auth_service.forgot_password(db, data.email)
+    return {
+        "message": "If an account exists for this email, a reset link has been sent."
+    }
+
+
+@auth_router.post(
+    "/auth/reset-password",
+    summary="Consume a reset token and set a new password",
+)
+async def reset_password(data: ResetPasswordRequest, db=Depends(get_db)):
+    await auth_service.reset_password(db, data.token, data.new_password)
+    return {"message": "Password updated. Please log in."}

@@ -106,3 +106,20 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_active
   ON refresh_tokens (user_id, expires_at)
   WHERE revoked_at IS NULL;
+
+
+
+-- ---------- PASSWORD RESET TOKENS TABLE ----------
+-- Stores SHA-256 hashes of single-use, time-limited password reset tokens.
+-- Successful reset marks `used_at` and revokes the user's other refresh tokens.
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    used_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user
+  ON password_reset_tokens (user_id, expires_at);
