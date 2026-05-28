@@ -12,11 +12,12 @@ import Pagination from '../components/common/Pagination';
 import TaskForm from '../components/tasks/TaskForm';
 import TaskFilters from '../components/tasks/TaskFilters';
 import TaskList from '../components/tasks/TaskList';
+import ViewToggle from '../components/kanban/ViewToggle';
+import KanbanBoard from './KanbanBoard';
 
 const DEFAULT_PAGE_SIZE = 9;
+const BOARD_PAGE_SIZE = 200;
 
-// Helpers: read / write filter+page state from URL query params so a hard
-// refresh preserves the user's view.
 const parseFromURL = (sp) => ({
   page: Math.max(1, parseInt(sp.get('page') || '1', 10) || 1),
   size: Math.max(1, parseInt(sp.get('size') || String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE),
@@ -24,9 +25,9 @@ const parseFromURL = (sp) => ({
   status: sp.get('status') || '',
   sort_by: sp.get('sort_by') || 'created_at',
   sort_order: sp.get('sort_order') === 'asc' ? 'asc' : 'desc',
+  view: sp.get('view') === 'board' ? 'board' : 'list',
 });
 
-// Strip empty values so the URL stays tidy.
 const toURLParams = (state) => {
   const out = {};
   if (state.page && state.page !== 1) out.page = String(state.page);
@@ -35,6 +36,7 @@ const toURLParams = (state) => {
   if (state.status) out.status = state.status;
   if (state.sort_by && state.sort_by !== 'created_at') out.sort_by = state.sort_by;
   if (state.sort_order && state.sort_order !== 'desc') out.sort_order = state.sort_order;
+  if (state.view === 'board') out.view = 'board';
   return out;
 };
 
@@ -44,6 +46,7 @@ const Tasks = () => {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const urlState = useMemo(() => parseFromURL(searchParams), [searchParams]);
+  const view = urlState.view;
 
   const [tasks, setTasks] = useState([]);
   const [total, setTotal] = useState(0);
@@ -52,7 +55,6 @@ const Tasks = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
 
-  // The filter bar drives `urlState` indirectly through setSearchParams.
   const filters = {
     search: urlState.search,
     status: urlState.status,
@@ -63,8 +65,6 @@ const Tasks = () => {
   const updateState = useCallback(
     (patch) => {
       const next = { ...urlState, ...patch };
-      // Whenever any filter changes, reset to page 1 (unless the patch
-      // explicitly sets page).
       if (!('page' in patch)) next.page = 1;
       setSearchParams(toURLParams(next));
     },
@@ -75,8 +75,8 @@ const Tasks = () => {
     setLoading(true);
     try {
       const params = {
-        page: urlState.page,
-        size: urlState.size,
+        page: view === 'board' ? 1 : urlState.page,
+        size: view === 'board' ? BOARD_PAGE_SIZE : urlState.size,
         sort_by: urlState.sort_by,
         sort_order: urlState.sort_order,
       };
@@ -94,7 +94,7 @@ const Tasks = () => {
     } finally {
       setLoading(false);
     }
-  }, [urlState]);
+  }, [urlState, view]);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -149,6 +149,10 @@ const Tasks = () => {
     }
   };
 
+  const handleViewChange = (next) => {
+    updateState({ view: next, page: 1 });
+  };
+
   return (
     <>
       <Navbar />
@@ -164,33 +168,45 @@ const Tasks = () => {
                 {isAdmin ? 'All Tasks' : 'My Tasks'}
               </h1>
               <p className="text-gray-600">
-                Manage and track your tasks efficiently
+                {view === 'board'
+                  ? 'Drag cards between columns to update status'
+                  : 'Manage and track your tasks efficiently'}
               </p>
             </div>
 
-            {isAdmin && (
-              <Button
-                variant="primary"
-                icon={<Plus size={20} />}
-                onClick={handleCreateTask}
-              >
-                Create Task
-              </Button>
-            )}
+            <div className="flex items-center gap-3">
+              <ViewToggle view={view} onChange={handleViewChange} />
+              {isAdmin && (
+                <Button
+                  variant="primary"
+                  icon={<Plus size={20} />}
+                  onClick={handleCreateTask}
+                >
+                  Create Task
+                </Button>
+              )}
+            </div>
           </motion.div>
 
           <TaskFilters filters={filters} onFilterChange={updateState} />
 
-          <TaskList
-            tasks={tasks}
-            onEdit={handleEditTask}
-            onDelete={handleDeleteTask}
-            onStatusChange={handleStatusChange}
-            isAdmin={isAdmin}
-            loading={loading}
-          />
+          {view === 'board' ? (
+            <KanbanBoard
+              tasks={tasks}
+              loading={loading}
+            />
+          ) : (
+            <TaskList
+              tasks={tasks}
+              onEdit={handleEditTask}
+              onDelete={handleDeleteTask}
+              onStatusChange={handleStatusChange}
+              isAdmin={isAdmin}
+              loading={loading}
+            />
+          )}
 
-          {total > 0 && (
+          {view === 'list' && total > 0 && (
             <Pagination
               page={urlState.page}
               totalPages={totalPages}
