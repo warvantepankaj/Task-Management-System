@@ -143,6 +143,22 @@ VITE_WS_URL=ws://localhost:8000
 
 For production builds, copy `Frontend/.env.production.example` → `.env.production` and point the two vars at your deployed backend (e.g. `https://api.yourdomain.com` and `wss://api.yourdomain.com`). If you deploy via Cloudflare Pages, set the same two vars in the Pages dashboard instead — no `.env.production` needed in the repo.
 
+## Testing
+
+Backend integration tests run against a real PostgreSQL database and cover the auth flow end-to-end: registration, login, refresh-token rotation + reuse rejection, logout revocation, bearer-token enforcement, and the forgot/reset password lifecycle.
+
+```powershell
+cd Backend
+.\.venv\Scripts\activate
+pytest -v
+```
+
+- A dedicated test database (`task_management_system_db_test` by default, override via `TEST_DATABASE_NAME`) is **created automatically** and the schema applied on first run; tables are truncated between tests for isolation. Your dev/prod database is never touched.
+- DB credentials come from `Backend/.env` locally; in CI they come from a PostgreSQL service container.
+- Tests live in `Backend/tests/integration/`; fixtures in `Backend/tests/conftest.py`.
+
+CI (`.github/workflows/ci.yml`) runs the full suite on every PR against a PostgreSQL 16 service container, with a coverage report. The `backend` job runs an import-check **and** `pytest --cov`; the `frontend` job lints and builds.
+
 ## Deployment
 
 Full step-by-step guide: [`DEPLOYMENT.md`](./DEPLOYMENT.md).

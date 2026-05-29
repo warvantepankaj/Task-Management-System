@@ -7,6 +7,32 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: task_management_system_db_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_HOST: localhost
+      DATABASE_PORT: '5432'
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      TEST_DATABASE_NAME: task_management_system_db_test
+      JWT_SECRET: ci-test-secret-not-used-in-production
+      ACCESS_TOKEN_TTL_MIN: '15'
+      REFRESH_TOKEN_TTL_DAYS: '14'
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,14 +45,10 @@ jobs:
           pip install -r requirements.txt
       - name: Import-check
         working-directory: Backend
-        env:
-          JWT_SECRET: ci-placeholder-secret-not-used
-          DATABASE_HOST: localhost
-          DATABASE_PORT: '5432'
-          DATABASE_NAME: ci
-          DATABASE_USER: ci
-          DATABASE_PASSWORD: ci
         run: python -c "from main import app; print('routes:', len(app.routes))"
+      - name: Run integration tests
+        working-directory: Backend
+        run: pytest -v --cov=. --cov-report=term-missing
 
   frontend:
     runs-on: ubuntu-latest
