@@ -9,6 +9,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { motionValue } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { taskAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
@@ -28,7 +29,12 @@ import { KANBAN_COLUMN_ORDER, KANBAN_COLUMN_LABEL, TASK_STATUS } from '../utils/
 const KanbanBoard = ({ tasks: initialTasks = [], loading = false, filter = (t) => t }) => {
   const { user } = useAuth();
   const [tasks, setTasks] = useState(initialTasks);
+  // `remoteDrags` holds metadata (task, user) only — position is held in
+  // motion values out-of-band so that 60+ Hz cursor updates do NOT trigger
+  // a React render. The DragGhost subscribes to these motion values directly
+  // and writes them to the DOM with no virtual-DOM diff in the hot path.
   const [remoteDrags, setRemoteDrags] = useState({});
+  const positionsRef = useRef(new Map()); // task_id -> { x: MotionValue, y: MotionValue }
 
   useEffect(() => {
     setTasks(initialTasks);
@@ -44,6 +50,15 @@ const KanbanBoard = ({ tasks: initialTasks = [], loading = false, filter = (t) =
     window.addEventListener('pointermove', onMove);
     return () => window.removeEventListener('pointermove', onMove);
   }, []);
+
+  const ensurePosition = (taskId, initialX = 0, initialY = 0) => {
+    let pos = positionsRef.current.get(taskId);
+    if (!pos) {
+      pos = { x: motionValue(initialX), y: motionValue(initialY) };
+      positionsRef.current.set(taskId, pos);
+    }
+    return pos;
+  };
 
   // ---- WebSocket wiring -------------------------------------------------
   const socket = useTaskSocket({
@@ -75,39 +90,33 @@ const KanbanBoard = ({ tasks: initialTasks = [], loading = false, filter = (t) =
     },
     onDragStart: (data, env) => {
       if (!data?.task_id) return;
-      if (env?.actor_id && user?.id && env.actor_id === user.id) return; // ignore own
+      const initX = data.x ?? 0;
+      const initY = data.y ?? 0;
+      const pos = ensurePosition(data.task_id, initX, initY);
+      pos.x.set(initX);
+      pos.y.set(initY);
       setRemoteDrags((prev) => ({
         ...prev,
         [data.task_id]: {
           task_id: data.task_id,
           user: { id: env?.actor_id, username: `User ${env?.actor_id}` },
-          cursor: { x: 0, y: 0 },
+          position: pos,
           over_status: data.from_status || null,
           task: tasks.find((t) => t.id === data.task_id) || null,
         },
       }));
     },
-    onDragMove: (data, env) => {
+    onDragMove: (data) => {
+      // Hot path: write directly to motion values. No setState, no re-render.
       if (!data?.task_id) return;
-      if (env?.actor_id && user?.id && env.actor_id === user.id) return;
-      setRemoteDrags((prev) => {
-        const existing = prev[data.task_id];
-        if (!existing) return prev;
-        return {
-          ...prev,
-          [data.task_id]: {
-            ...existing,
-            cursor: {
-              x: data.x ?? existing.cursor?.x ?? 0,
-              y: data.y ?? existing.cursor?.y ?? 0,
-            },
-            over_status: data.over_status ?? existing.over_status,
-          },
-        };
-      });
+      const pos = positionsRef.current.get(data.task_id);
+      if (!pos) return;
+      if (typeof data.x === 'number') pos.x.set(data.x);
+      if (typeof data.y === 'number') pos.y.set(data.y);
     },
     onDragEnd: (data) => {
       if (!data?.task_id) return;
+      positionsRef.current.delete(data.task_id);
       setRemoteDrags((prev) => {
         if (!(data.task_id in prev)) return prev;
         const next = { ...prev };
@@ -140,7 +149,8 @@ const KanbanBoard = ({ tasks: initialTasks = [], loading = false, filter = (t) =
     const t = tasks.find((x) => x.id === taskId);
     if (!t) return;
     activeDragRef.current = { taskId, fromStatus: t.status };
-    drag.sendDragStart({ task_id: taskId, from_status: t.status });
+    const { x, y } = cursorRef.current;
+    drag.sendDragStart({ task_id: taskId, from_status: t.status, x, y });
   };
 
   const handleDragMove = () => {

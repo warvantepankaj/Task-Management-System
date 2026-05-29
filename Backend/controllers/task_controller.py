@@ -53,22 +53,26 @@ async def update_task_admin(
     return await TaskService.admin_update_task(conn, task_id, admin["id"], payload)
 
 
-@router.patch("/{task_id}/status", summary="User updates task status")
+@router.patch("/{task_id}/status", summary="Update task status (admin: any; user: own)")
 async def update_task_status(
     task_id: int,
     payload: TaskStatusUpdate,
-    user: dict = Depends(user_required),
+    current_user: dict = Depends(get_current_user),
     conn=Depends(get_db),
 ):
     return await TaskService.user_update_task_status(
-        conn, task_id, user["id"], payload.status
+        conn,
+        task_id=task_id,
+        user_id=current_user["id"],
+        status=payload.status,
+        is_admin=current_user["role"] == "admin",
     )
 
 
 @router.get("/filtered", summary="Get tasks with pagination + filters + sorting")
 def get_tasks_filtered(
     page: int = Query(1, ge=1),
-    size: int = Query(10, ge=1, le=100),
+    size: int = Query(10, ge=1, le=500),
     status: TaskStatus | None = Query(None),
     assigned_to: int | None = Query(
         None, description="Admin-only; ignored for non-admins."

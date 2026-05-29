@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 
-const DRAG_MOVE_INTERVAL_MS = 1000 / 30; // 30 Hz
+const DRAG_MOVE_INTERVAL_MS = 1000 / 120; // 120 Hz
 const BUFFER_THRESHOLD_BYTES = 64 * 1024;
 
 /**

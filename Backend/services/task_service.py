@@ -99,15 +99,24 @@ class TaskService:
         return task
 
     @staticmethod
-    async def user_update_task_status(conn, task_id: int, user_id: int, status: str):
-
-        updated_task = TaskDAO.update_task_status(conn, task_id, user_id, status)
+    async def user_update_task_status(
+        conn,
+        task_id: int,
+        user_id: int,
+        status: str,
+        is_admin: bool = False,
+    ):
+        if is_admin:
+            updated_task = TaskDAO.update_task_by_admin(conn, task_id, {"status": status})
+            if updated_task:
+                conn.commit()
+            not_found_detail = "Task not found"
+        else:
+            updated_task = TaskDAO.update_task_status(conn, task_id, user_id, status)
+            not_found_detail = "Task not found or not assigned to user"
 
         if not updated_task:
-            raise HTTPException(
-                status_code=404,
-                detail="Task not found or not assigned to user"
-            )
+            raise HTTPException(status_code=404, detail=not_found_detail)
 
         full = TaskDAO.get_task_by_id(conn, task_id)
         serialized = _serialize_task(full) or {"id": task_id, "assigned_to": user_id, "status": status}

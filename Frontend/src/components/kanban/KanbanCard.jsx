@@ -34,9 +34,10 @@ const KanbanCard = ({ task, remoteDrag, index = 0 }) => {
     <motion.div
       ref={setNodeRef}
       style={style}
+      layoutId={`kanban-card-${task.id}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05 }}
+      transition={{ layout: { duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }, delay: index * 0.05 }}
       whileHover={!isDragging && !isRemoteDragging ? { y: -4 } : undefined}
       whileDrag={{ scale: 1.04, rotate: 1 }}
       {...attributes}
