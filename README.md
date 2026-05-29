@@ -67,6 +67,8 @@ Task_Management_System/
 │       ├── services/     # api.js (single axios instance + refresh interceptor)
 │       └── utils/        # constants, helpers
 ├── schema.sql            # users, tasks, task_comments, refresh_tokens, password_reset_tokens
+├── .github/workflows/    # ci.yml (PR checks) + deploy-backend.yml (SSH deploy on main)
+├── DEPLOYMENT.md         # Free-tier deploy guide (Cloudflare Pages + AWS EC2 + RDS)
 └── README.md
 ```
 
@@ -103,13 +105,16 @@ JWT_SECRET=<random 64-byte URL-safe string>
 ACCESS_TOKEN_TTL_MIN=15
 REFRESH_TOKEN_TTL_DAYS=14
 
+# Comma-separated list of browser origins allowed to call the API.
+CORS_ORIGINS=http://localhost:3000
+FRONTEND_URL=http://localhost:3000
+
 # Optional. If unset, password-reset links are logged to stdout instead of sent.
 SMTP_HOST=
 SMTP_PORT=587
 SMTP_USER=
 SMTP_PASSWORD=
 MAIL_FROM=
-FRONTEND_URL=http://localhost:3000
 RESET_TOKEN_TTL_MIN=60
 ```
 
@@ -129,7 +134,38 @@ pnpm install
 pnpm dev          # http://localhost:3000
 ```
 
-Vite proxies `/api` → `http://localhost:8000` (see `vite.config.js`).
+Create `Frontend/.env` for local dev (already gitignored):
+
+```env
+VITE_API_BASE_URL=http://localhost:8000
+VITE_WS_URL=ws://localhost:8000
+```
+
+For production builds, copy `Frontend/.env.production.example` → `.env.production` and point the two vars at your deployed backend (e.g. `https://api.yourdomain.com` and `wss://api.yourdomain.com`). If you deploy via Cloudflare Pages, set the same two vars in the Pages dashboard instead — no `.env.production` needed in the repo.
+
+## Deployment
+
+Full step-by-step guide: [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+
+**Recommended free-tier stack** (all stay free for 12 months on AWS, frontend is free forever on Cloudflare):
+
+| Layer | Service | Notes |
+|---|---|---|
+| Static frontend | **Cloudflare Pages** | Auto-deploys on push to `main` via Pages' GitHub integration. Build cmd: `pnpm install --frozen-lockfile && pnpm build`; output dir: `Frontend/dist`. Env vars (`VITE_API_BASE_URL`, `VITE_WS_URL`) set in the Pages dashboard. |
+| API + WebSocket | **AWS EC2 `t3.micro`** | Long-lived uvicorn process behind nginx + Let's Encrypt. Single worker (the in-memory `ConnectionManager` doesn't fan out across workers). |
+| Database | **AWS RDS `db.t4g.micro` PostgreSQL** | Single-AZ, 20 GB gp3. Apply `schema.sql` once. |
+
+**CI/CD** (`.github/workflows/`):
+
+- `ci.yml` — runs on every PR: backend import-check + frontend `pnpm build`.
+- `deploy-backend.yml` — runs on push to `main`: SSHes into EC2, `git pull`, reinstalls deps, restarts the `taskmgmt` systemd unit. Requires three GitHub Actions secrets: `EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY`.
+- Frontend deploys are handled by Cloudflare Pages' own GitHub integration — no Actions workflow needed.
+
+**WebSocket caveats for prod**:
+
+- The nginx site config **must** forward the `Upgrade` / `Connection` headers on `/ws/`; without them `/ws/tasks` returns 502. See §4.4 of `DEPLOYMENT.md`.
+- Uvicorn needs the `websockets` (or `wsproto`) package installed in its venv. Already pinned in `requirements.txt`.
+- Run uvicorn with `--workers 1`. Scaling beyond one worker requires Redis pub/sub on the `ConnectionManager`.
 
 ## API Overview
 
