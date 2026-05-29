@@ -1,5 +1,7 @@
 # Task Management System
 
+[![CI](https://github.com/warvantepankaj/Task-Management-System/actions/workflows/ci.yml/badge.svg)](https://github.com/warvantepankaj/Task-Management-System/actions/workflows/ci.yml)
+
 A full-stack task management app with **role-based access control**, **real-time collaboration**, and a **drag-and-drop Kanban board**. FastAPI backend (PostgreSQL + JWT) and React 19 / Vite / Tailwind frontend.
 
 ## Features
