@@ -1,10 +1,10 @@
 import os
-from dotenv import load_dotenv
 from pathlib import Path
+from dotenv import load_dotenv
 
-ENV_PATH = Path(
-    "C:\\Pankaj's Space\\Projects\\FAST-API\\Task_Management_System\\Backend\\.env"
-)
+# Resolve .env relative to this file so the same code runs on Windows, Linux,
+# and inside containers without absolute-path edits.
+ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(ENV_PATH)
 
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
@@ -53,6 +53,13 @@ SMTP_STARTTLS = (os.getenv("SMTP_STARTTLS", "True").lower() == "true")
 MAIL_FROM = os.getenv("MAIL_FROM") or "no-reply@example.com"
 MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME") or "Task Management System"
 FRONTEND_URL = os.getenv("FRONTEND_URL") or "http://localhost:3000"
+
+# Comma-separated list of allowed CORS origins; defaults to FRONTEND_URL.
+CORS_ORIGINS = [
+    o.strip()
+    for o in (os.getenv("CORS_ORIGINS") or FRONTEND_URL).split(",")
+    if o.strip()
+]
 RESET_TOKEN_TTL_MIN = int(os.getenv("RESET_TOKEN_TTL_MIN", "60"))
 
 # `EMAIL_ENABLED` is True only when we have an actual SMTP host configured.

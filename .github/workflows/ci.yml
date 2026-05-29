@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        working-directory: Backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Import-check
+        working-directory: Backend
+        env:
+          JWT_SECRET: ci-placeholder-secret-not-used
+          DATABASE_HOST: localhost
+          DATABASE_PORT: '5432'
+          DATABASE_NAME: ci
+          DATABASE_USER: ci
+          DATABASE_PASSWORD: ci
+        run: python -c "from main import app; print('routes:', len(app.routes))"
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: Frontend/pnpm-lock.yaml
+      - name: Install
+        working-directory: Frontend
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        working-directory: Frontend
+        run: pnpm lint || true
+      - name: Build
+        working-directory: Frontend
+        env:
+          VITE_API_BASE_URL: https://api.example.com
+          VITE_WS_URL: wss://api.example.com
+        run: pnpm build

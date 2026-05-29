@@ -1,17 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+
 from controllers.user_controller import user_router
 from controllers.task_controller import router as task_router
 from controllers.auth_controller import auth_router
 from controllers.ws_controller import ws_router
-import uvicorn
-from fastapi.middleware.cors import CORSMiddleware
+from core.config import CORS_ORIGINS
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
